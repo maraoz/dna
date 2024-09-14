@@ -1,26 +1,6 @@
 import gzip
 import argparse
-import sys
-
-def read_vcf_metadata(vcf_file):
-    metadata = {}
-    opener = gzip.open if vcf_file.endswith('.gz') else open
-    
-    with opener(vcf_file, 'rt') as f:
-        for line in f:
-            if line.startswith('##'):
-                key, value = line[2:].strip().split('=', 1)
-                if key not in metadata:
-                    metadata[key] = []
-                metadata[key].append(value)
-            elif line.startswith('#CHROM'):
-                # This is the header line with column names
-                metadata['columns'] = line[1:].strip().split('\t')
-                break
-            else:
-                # We've reached the data lines, so we can stop
-                break
-    return metadata
+from Bio import SeqIO
 
 def read_genotype(vcf_file, target_snp):
     opener = gzip.open if vcf_file.endswith('.gz') else open
@@ -37,41 +17,47 @@ def read_genotype(vcf_file, target_snp):
                 genotype = fields[9].split(':')[0]
                 alleles = [ref] + alt.split(',')
                 readable_genotype = ''.join(alleles[int(i)] for i in genotype.replace('|', '/').split('/'))
-                return readable_genotype
+                return chrom, int(pos), readable_genotype
     
+    return None, None, None
+
+def check_fasta_reference(fasta_file, chrom, pos):
+    with gzip.open(fasta_file, 'rt') if fasta_file.endswith('.gz') else open(fasta_file, 'rt') as handle:
+        for record in SeqIO.parse(handle, "fasta"):
+            if record.id == chrom:
+                return record.seq[pos-1].upper()
     return None
 
-def print_metadata(metadata):
-    print("VCF Metadata:")
-    for key, values in metadata.items():
-        if key == 'columns':
-            print(f"  Columns: {', '.join(values)}")
-        else:
-            print(f"  {key}:")
-            for value in values:
-                print(f"    {value}")
-
 def main():
-    parser = argparse.ArgumentParser(description='Read genotype and metadata from a VCF file.')
+    parser = argparse.ArgumentParser(description='Read genotype from a VCF file for a specific SNP and check FASTA reference if not found.')
     parser.add_argument('vcf_file', help='Path to the VCF file')
+    parser.add_argument('fasta_file', help='Path to the FASTA file')
     parser.add_argument('--snp', default='rs12913832', help='Target SNP (default: rs12913832)')
+    parser.add_argument('--chrom', default='15', help='Chromosome number (default: 15)')
+    parser.add_argument('--pos', type=int, default=28120472, help='Position in the chromosome (default: 28120472 for rs12913832 in GRCh38/hg38)')
     
     args = parser.parse_args()
 
-    metadata = read_vcf_metadata(args.vcf_file)
-    print_metadata(metadata)
-
-    target_snp = args.snp
-    genotype = read_genotype(args.vcf_file, target_snp)
+    chrom, pos, genotype = read_genotype(args.vcf_file, args.snp)
 
     if genotype:
-        print(f"\nYour genotype at {target_snp} is: {genotype}")
+        print(f"Your genotype at {args.snp} is: {genotype}")
         if genotype == 'GG':
             print("This genotype is most common in people with blue eyes.")
         elif genotype in ['AA', 'GA']:
             print("This genotype is most common in people with brown eyes.")
     else:
-        print(f"\nSNP {target_snp} not found in the VCF file.")
+        print(f"SNP {args.snp} not found in the VCF file. Checking FASTA reference...")
+        
+        # If chromosome and position weren't found in VCF, use the provided defaults
+        chrom = chrom or f"chr{args.chrom}"
+        pos = pos or args.pos
+        
+        ref_base = check_fasta_reference(args.fasta_file, chrom, pos)
+        if ref_base:
+            print(f"Reference base at chromosome {chrom}, position {pos}: {ref_base}")
+        else:
+            print(f"Unable to find the specified position in the FASTA file.")
 
 if __name__ == "__main__":
     main()
