@@ -6,7 +6,7 @@ pip install -r requirements.txt
 ```
 
 ### Required data
-1) Your VCF file: you should get this from your full genome sequencing company.
+1) Your VCF file: you should get this from a full genome sequencing company.
 
 2) Your reference FASTA file: you can check your VCF metadata for which reference genome it uses.
 In most cases it will be hg38, which you can download here:
